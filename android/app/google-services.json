@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "849870731940",
+    "project_id": "cigcounter-6a722",
+    "storage_bucket": "cigcounter-6a722.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:849870731940:android:a9098373f57f5a1e648431",
+        "android_client_info": {
+          "package_name": "com.example.cig_counter"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "849870731940-odhkqkvsd911jk0kqqks3sf0utb0k99g.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBdwbOsFOJuZ2BGK_Hd3H6sm0au_-ySHZo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "849870731940-odhkqkvsd911jk0kqqks3sf0utb0k99g.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

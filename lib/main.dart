@@ -5,7 +5,10 @@ import 'dart:math' show max;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'firebase_options.dart';
+import 'widget_service.dart';
 
 // Models for structured user data
 class DailyUserStats {
@@ -88,6 +91,10 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  // Initialize Firestore explicitly
+  FirebaseService.initializeFirestore();
+  // Initialize home screen widget
+  await WidgetService.initializeWidget();
   // Uncomment the line below to populate with mock data for testing
   // await CigaretteDataService.populateMockData();
   runApp(const MainApp());
@@ -316,7 +323,7 @@ class _LoginPageState extends State<LoginPage> {
                                 }
                               },
                         icon: const Icon(Icons.account_circle),
-                        label: const Text('Sign in with Google'),
+                        label: Text(_isSignUp ? 'Sign up with Google' : 'Sign in with Google'),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -336,7 +343,7 @@ class _LoginPageState extends State<LoginPage> {
                                 }
                               },
                         icon: const Icon(Icons.apple),
-                        label: const Text('Sign in with Apple'),
+                        label: Text(_isSignUp ? 'Sign up with Apple' : 'Sign in with Apple'),
                       ),
                     ),
                   ],
@@ -444,11 +451,31 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
 
-  late final List<Widget> _pages = [
-    MainPage(onUpdate: _refresh),
-    const FriendsPage(),
-    StatsPage(onUpdate: _refresh),
-  ];
+  late List<Widget> _pages;
+
+  @override
+  void initState() {
+    super.initState();
+    _buildPages();
+  }
+
+  @override
+  void didUpdateWidget(HomePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Rebuild the entire page if userId changed (for login/logout button)
+    if (oldWidget.userId != widget.userId) {
+      _buildPages();
+      setState(() {});
+    }
+  }
+
+  void _buildPages() {
+    _pages = [
+      MainPage(userId: widget.userId, onUpdate: _refresh),
+      const FriendsPage(),
+      StatsPage(userId: widget.userId, onUpdate: _refresh),
+    ];
+  }
 
   void _refresh() {
     setState(() {});
@@ -462,27 +489,103 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: _pages[_selectedIndex],
-      appBar: null, // AppBar is in each page now
-      bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Main',
+    return Stack(
+      children: [
+        Scaffold(
+          body: _pages[_selectedIndex],
+          appBar: null,
+          bottomNavigationBar: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.grey[900]!, Colors.grey[800]!],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 15,
+                  offset: const Offset(0, -5),
+                ),
+              ],
+            ),
+            child: BottomNavigationBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              items: [
+                BottomNavigationBarItem(
+                  icon: _selectedIndex == 0
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Colors.red, Colors.orange],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.home, size: 24),
+                        )
+                      : const Icon(Icons.home),
+                  label: 'Main',
+                ),
+                BottomNavigationBarItem(
+                  icon: _selectedIndex == 1
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Colors.blue, Colors.cyan],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.people, size: 24),
+                        )
+                      : const Icon(Icons.people),
+                  label: 'Friends',
+                ),
+                BottomNavigationBarItem(
+                  icon: _selectedIndex == 2
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Colors.green, Colors.teal],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.bar_chart, size: 24),
+                        )
+                      : const Icon(Icons.bar_chart),
+                  label: 'Stats',
+                ),
+              ],
+              currentIndex: _selectedIndex,
+              onTap: _onItemTapped,
+            ),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people),
-            label: 'Friends',
+        ),
+        // Login Button - Top Right
+        if (widget.userId == null)
+          Positioned(
+            top: 16,
+            right: 16,
+            child: SafeArea(
+              child: FloatingActionButton.extended(
+                onPressed: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const LoginPage()),
+                  );
+                },
+                label: const Text('Sign In'),
+                icon: const Icon(Icons.login),
+                backgroundColor: Colors.blue,
+              ).animate().scale(
+                duration: 600.ms,
+                begin: const Offset(0.8, 0.8),
+                end: const Offset(1, 1),
+                curve: Curves.easeOutBack,
+              ),
+            ),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart),
-            label: 'Stats',
-          ),
-        ],
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-      ),
+      ],
     );
   }
 }
@@ -490,25 +593,46 @@ class _HomePageState extends State<HomePage> {
 // Firebase Service
 class FirebaseService {
   static final FirebaseAuth _auth = FirebaseAuth.instance;
-  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+  static late FirebaseFirestore _db;
+
+  // Initialize Firestore with default database
+  static void initializeFirestore() {
+    _db = FirebaseFirestore.instance;
+  }
 
   // Create user document in Firestore after signup
-  static Future<void> createUserProfile(String userId, String email) async {
+  static Future<void> createUserProfile(
+    String userId,
+    String email, {
+    String? displayName,
+    String? photoUrl,
+  }) async {
     try {
       final userDoc = _db.collection('users').doc(userId);
       
-      // Create profile document
+      // Generate a random friend code
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      final random = DateTime.now().millisecondsSinceEpoch % 1000;
+      final friendCode = List.generate(
+        7,
+        (i) => chars[(random + i * 7) % chars.length],
+      ).join();
+      
+      // Create profile document with merge to handle race conditions
       await userDoc.set({
         'email': email,
         'createdAt': Timestamp.now(),
         'lastUpdated': Timestamp.now(),
-        'displayName': email.split('@')[0], // Use email prefix as default name
-      });
+        'displayName': displayName ?? email.split('@')[0], // Use provided name or email prefix
+        'friendCode': friendCode,
+        if (photoUrl != null) 'photoUrl': photoUrl,
+      }, SetOptions(merge: true)); // Use merge to avoid overwriting if doc already exists
 
-      print('User profile created for $userId');
+      print('User profile created for $userId with friend code: $friendCode');
     } catch (e) {
       print('Error creating user profile: $e');
-      rethrow;
+      // Don't rethrow - allow the user to continue even if profile creation fails
+      // They may not have permission to write to Firestore yet
     }
   }
 
@@ -649,23 +773,92 @@ class FirebaseService {
   // Update last sync time
   static Future<void> updateLastSyncTime(String userId) async {
     try {
-      await _db.collection('users').doc(userId).update({
+      await _db.collection('users').doc(userId).set({
         'lastUpdated': Timestamp.now(),
-      });
+      }, SetOptions(merge: true));
     } catch (e) {
       print('Error updating last sync time: $e');
     }
   }
 
-  // Web-friendly Google sign-in (uses popup); mobile requires google_sign_in package
+  // Web-friendly Google sign-in (uses popup); mobile uses google_sign_in package
   static Future<UserCredential?> signInWithGoogle() async {
     try {
       if (kIsWeb) {
         final provider = GoogleAuthProvider();
-        return await _auth.signInWithPopup(provider);
+        final userCredential = await _auth.signInWithPopup(provider);
+        
+        // Create user profile if it doesn't exist
+        if (userCredential.user != null) {
+          try {
+            final userProfile = await getUserProfile(userCredential.user!.uid);
+            if (userProfile == null) {
+              print('Creating profile for new user: ${userCredential.user!.uid}');
+              await createUserProfile(
+                userCredential.user!.uid,
+                userCredential.user!.email ?? '',
+                displayName: userCredential.user!.displayName,
+                photoUrl: userCredential.user!.photoURL,
+              );
+              print('Profile created successfully');
+            } else {
+              print('Profile already exists');
+            }
+          } catch (profileError) {
+            print('Error during profile creation: $profileError');
+            // Continue anyway, as the error might be a permissions issue that we can't fix here
+          }
+        }
+        
+        return userCredential;
       } else {
-        // Mobile flow is not implemented here; recommend adding `google_sign_in` package.
-        throw UnimplementedError('Google sign-in on mobile requires the google_sign_in package.');
+        // Mobile flow using google_sign_in package
+        final GoogleSignIn googleSignIn = GoogleSignIn(
+          scopes: [
+            'email',
+            'profile',
+          ],
+        );
+        
+        final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+        if (googleUser == null) {
+          // User cancelled the sign-in
+          throw FirebaseAuthException(
+            code: 'ERROR_ABORTED_BY_USER',
+            message: 'Sign in aborted by user',
+          );
+        }
+        
+        final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+        
+        if (googleAuth.accessToken == null) {
+          throw FirebaseAuthException(
+            code: 'ERROR_MISSING_TOKEN',
+            message: 'Failed to get authentication token from Google',
+          );
+        }
+        
+        final AuthCredential credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken!,
+          idToken: googleAuth.idToken,
+        );
+        
+        final UserCredential userCredential = await _auth.signInWithCredential(credential);
+        
+        // Create user profile if it doesn't exist
+        if (userCredential.user != null) {
+          final userProfile = await getUserProfile(userCredential.user!.uid);
+          if (userProfile == null) {
+            await createUserProfile(
+              userCredential.user!.uid,
+              userCredential.user!.email ?? googleUser.email,
+              displayName: userCredential.user!.displayName ?? googleUser.displayName,
+              photoUrl: userCredential.user!.photoURL ?? googleUser.photoUrl,
+            );
+          }
+        }
+        
+        return userCredential;
       }
     } catch (e) {
       print('Error during Google sign-in: $e');
@@ -706,6 +899,160 @@ class FirebaseService {
       print('Replaced local data with Firestore data for $userId');
     } catch (e) {
       print('Error replacing local data: $e');
+      rethrow;
+    }
+  }
+
+  // Generate a unique friend code for a user
+  static Future<String> generateFriendCode(String userId) async {
+    try {
+      final userDoc = await _db.collection('users').doc(userId).get();
+      if (userDoc.exists && userDoc.data()!.containsKey('friendCode')) {
+        return userDoc['friendCode'] as String;
+      }
+
+      // Generate a random code like NCM7763
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      final random = DateTime.now().millisecondsSinceEpoch % 1000;
+      final code = List.generate(
+        7,
+        (i) => chars[(random + i * 7) % chars.length],
+      ).join();
+
+      await _db.collection('users').doc(userId).set({
+        'friendCode': code,
+      }, SetOptions(merge: true));
+
+      return code;
+    } catch (e) {
+      print('Error generating friend code: $e');
+      rethrow;
+    }
+  }
+
+  // Get user's own friend code
+  static Future<String> getFriendCode(String userId) async {
+    try {
+      final userDoc = await _db.collection('users').doc(userId).get();
+      if (userDoc.exists && userDoc.data()!.containsKey('friendCode')) {
+        return userDoc['friendCode'] as String;
+      }
+      return await generateFriendCode(userId);
+    } catch (e) {
+      print('Error getting friend code: $e');
+      rethrow;
+    }
+  }
+
+  // Find user by friend code
+  static Future<Map<String, dynamic>?> findUserByCode(String code) async {
+    try {
+      final snapshot = await _db
+          .collection('users')
+          .where('friendCode', isEqualTo: code.toUpperCase())
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) return null;
+      return snapshot.docs.first.data();
+    } catch (e) {
+      print('Error finding user by code: $e');
+      return null;
+    }
+  }
+
+  // Add a friend
+  static Future<void> addFriend(String currentUserId, String friendUserId) async {
+    try {
+      // Add to current user's friends list
+      await _db
+          .collection('users')
+          .doc(currentUserId)
+          .collection('friends')
+          .doc(friendUserId)
+          .set({
+        'userId': friendUserId,
+        'addedAt': Timestamp.now(),
+      });
+
+      print('Friend added: $friendUserId');
+    } catch (e) {
+      print('Error adding friend: $e');
+      rethrow;
+    }
+  }
+
+  // Get list of friends
+  static Future<List<Map<String, dynamic>>> getFriends(String userId) async {
+    try {
+      final snapshot = await _db
+          .collection('users')
+          .doc(userId)
+          .collection('friends')
+          .get();
+
+      final friends = <Map<String, dynamic>>[];
+      for (final doc in snapshot.docs) {
+        final friendUserId = doc['userId'] as String;
+        final friendProfile = await getUserProfile(friendUserId);
+        if (friendProfile != null) {
+          friends.add({
+            'userId': friendUserId,
+            ...friendProfile,
+          });
+        }
+      }
+
+      return friends;
+    } catch (e) {
+      print('Error fetching friends: $e');
+      return [];
+    }
+  }
+
+  // Get friend's stats summary
+  static Future<Map<String, dynamic>> getFriendStats(String friendUserId) async {
+    try {
+      final profile = await getUserProfile(friendUserId);
+      final heatmap = await fetchHeatmapDataFromFirestore(friendUserId);
+
+      int totalCigarettes = 0;
+      int smokingDays = 0;
+      for (final count in heatmap.values) {
+        totalCigarettes += count;
+        if (count > 0) smokingDays++;
+      }
+
+      final avgPerDay =
+          heatmap.isNotEmpty ? totalCigarettes / heatmap.length : 0.0;
+
+      return {
+        'displayName': profile?['displayName'] ?? 'Friend',
+        'email': profile?['email'] ?? 'N/A',
+        'totalCigarettes': totalCigarettes,
+        'smokingDays': smokingDays,
+        'averagePerDay': avgPerDay,
+        'totalDays': heatmap.length,
+      };
+    } catch (e) {
+      print('Error fetching friend stats: $e');
+      return {};
+    }
+  }
+
+  // Remove a friend
+  static Future<void> removeFriend(String userId, String friendUserId) async {
+    try {
+      await _db
+          .collection('users')
+          .doc(userId)
+          .collection('friends')
+          .doc(friendUserId)
+          .delete();
+
+      print('Friend removed: $friendUserId');
+    } catch (e) {
+      print('Error removing friend: $e');
       rethrow;
     }
   }
@@ -997,9 +1344,10 @@ class CigaretteDataService {
 }
 
 class MainPage extends StatefulWidget {
+  final String? userId;
   final VoidCallback onUpdate;
 
-  const MainPage({super.key, required this.onUpdate});
+  const MainPage({super.key, this.userId, required this.onUpdate});
 
   @override
   State<MainPage> createState() => _MainPageState();
@@ -1029,6 +1377,15 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _loadData();
       _updateTimeSinceLastCigarette();
+    }
+  }
+
+  @override
+  void didUpdateWidget(MainPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Rebuild UI when userId changes (login/logout)
+    if (oldWidget.userId != widget.userId) {
+      setState(() {});
     }
   }
 
@@ -1076,6 +1433,8 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   Future<void> _onSmokedCigarette() async {
     await CigaretteDataService.addCigarette();
     await CigaretteDataService._recordLastCigaretteTime();
+    
+    await WidgetService.updateWidgetData(todayCount: 0);
     _loadData();
     widget.onUpdate();
   }
@@ -1083,237 +1442,831 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Main'),
-        centerTitle: true,
-        elevation: 0,
-        actions: [
-          PopupMenuButton<String>(
-            onSelected: (value) async {
-              if (value == 'logout') {
-                await FirebaseService.signOut();
-              }
-            },
-            itemBuilder: (BuildContext context) => [
-              const PopupMenuItem(
-                value: 'logout',
-                child: Text('Logout'),
-              ),
-            ],
-          ),
-        ],
-      ),
+      appBar: null,
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
-            child: SizedBox(
-              width: double.infinity,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Just Smoked Button
-                  SizedBox(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+            child: Column(
+              children: [
+                // Header Section
+                const SizedBox(height: 20),
+                Text(
+                  '🚬 Smoke Tracker',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red[400],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Track your progress toward a healthier you',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.grey[500],
+                  ),
+                ),
+                const SizedBox(height: 40),
+
+                // Main Action Button - Big and Attractive
+                GestureDetector(
+                  onTap: _onSmokedCigarette,
+                  child: Container(
                     width: double.infinity,
-                    height: 60,
-                    child: ElevatedButton(
-                      onPressed: _onSmokedCigarette,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 4,
-                      ),
-                      child: const Text(
-                        'Just Smoked a Cigarette',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 60),
-                  
-                  // Today's Count Card
-                  _buildStatCard(
-                    label: 'Cigarettes Today',
-                    valueBuilder: () => FutureBuilder<int>(
-                      future: _todayCount,
-                      builder: (context, snapshot) {
-                        final count = snapshot.data ?? 0;
-                        return Text(
-                          '$count',
-                          style: const TextStyle(
-                            fontSize: 56,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.red,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  
-                  // Average Card (This Week)
-                  _buildStatCard(
-                    label: 'Average per Day (This Week)',
-                    valueBuilder: () => FutureBuilder<double>(
-                      future: _average,
-                      builder: (context, snapshot) {
-                        final avg = snapshot.data ?? 0.0;
-                        return Text(
-                          avg.toStringAsFixed(1),
-                          style: const TextStyle(
-                            fontSize: 48,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  
-                  // Time Since Last Cigarette Card
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(24),
+                    height: 280,
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green, width: 2),
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.red[600]!,
+                          Colors.red[400]!,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(30),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.red.withOpacity(0.4),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const Text(
-                          'Time Since Last Cigarette',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey,
-                            fontWeight: FontWeight.w500,
+                        // Cigarette Icon with Animation
+                        ShaderMask(
+                          shaderCallback: (bounds) => LinearGradient(
+                            colors: [Colors.yellow[300]!, Colors.orange[300]!],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                          ).createShader(bounds),
+                          child: const Icon(
+                            Icons.smoking_rooms,
+                            size: 90,
+                            color: Colors.white,
                           ),
-                          textAlign: TextAlign.center,
+                        ).animate(
+                          onPlay: (controller) => controller.repeat(),
+                        ).scale(
+                          duration: 2.seconds,
+                          begin: const Offset(1, 1),
+                          end: const Offset(1.1, 1.1),
+                        ).then().scale(
+                          duration: 2.seconds,
+                          begin: const Offset(1.1, 1.1),
+                          end: const Offset(1, 1),
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          _timeSinceLastCigarette,
-                          style: const TextStyle(
-                            fontSize: 32,
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Smoked!',
+                          style: TextStyle(
+                            fontSize: 28,
                             fontWeight: FontWeight.bold,
-                            color: Colors.green,
+                            color: Colors.white,
                           ),
-                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Tap to log a cigarette',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.white70,
+                          ),
                         ),
                       ],
+                    ),
+                  ),
+                ).animate().scale(
+                  duration: 600.ms,
+                  begin: const Offset(0.8, 0.8),
+                  end: const Offset(1, 1),
+                  curve: Curves.easeOutBack,
+                ),
+
+                const SizedBox(height: 50),
+
+                // Stats Row
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildAnimatedStatCard(
+                        icon: '📊',
+                        label: 'Today',
+                        futureValue: _todayCount,
+                        color: Colors.red,
+                        delay: 0,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildAnimatedStatCard(
+                        icon: '📈',
+                        label: 'This Week',
+                        futureValue: _average.then((v) => v.toStringAsFixed(1)),
+                        color: Colors.blue,
+                        delay: 100,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 20),
+
+                // Time Since Last Cigarette Card
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.green[600]!.withOpacity(0.2),
+                        Colors.green[400]!.withOpacity(0.1),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.green[400]!,
+                      width: 2,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        '⏱️ Time Since Last',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _timeSinceLastCigarette,
+                        style: TextStyle(
+                          fontSize: 36,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green[400],
+                        ),
+                      ),
+                    ],
+                  ),
+                ).animate().slideY(
+                  duration: 600.ms,
+                  begin: 0.3,
+                  end: 0,
+                  curve: Curves.easeOutCubic,
+                ),
+
+                const SizedBox(height: 40),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedStatCard({
+    required String icon,
+    required String label,
+    required Future<dynamic> futureValue,
+    required Color color,
+    required int delay,
+  }) {
+    return FutureBuilder<dynamic>(
+      future: futureValue,
+      builder: (context, snapshot) {
+        final value = snapshot.data ?? 0;
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                color.withOpacity(0.2),
+                color.withOpacity(0.05),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: color.withOpacity(0.3),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Text(
+                icon,
+                style: const TextStyle(fontSize: 32),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '$value',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[500],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ).animate().scale(
+          delay: Duration(milliseconds: delay),
+          duration: 600.ms,
+          begin: const Offset(0.8, 0.8),
+          end: const Offset(1, 1),
+          curve: Curves.easeOutBack,
+        );
+      },
+    );
+  }
+}
+
+class FriendsPage extends StatefulWidget {
+  const FriendsPage({super.key});
+
+  @override
+  State<FriendsPage> createState() => _FriendsPageState();
+}
+
+class _FriendsPageState extends State<FriendsPage> {
+  late Future<String> _friendCode;
+  late Future<List<Map<String, dynamic>>> _friendsList;
+  String? _currentUserId;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize with dummy futures
+    _friendCode = Future.value('');
+    _friendsList = Future.value([]);
+    _loadUserData();
+  }
+
+  @override
+  void didUpdateWidget(FriendsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _loadUserData();
+  }
+
+  void _loadUserData() {
+    final user = FirebaseService.getCurrentUser();
+    if (user != null) {
+      _currentUserId = user.uid;
+      setState(() {
+        _friendCode = FirebaseService.getFriendCode(user.uid);
+        _friendsList = FirebaseService.getFriends(user.uid);
+      });
+    } else {
+      setState(() {
+        _friendCode = Future.value('');
+        _friendsList = Future.value([]);
+      });
+    }
+  }
+
+  void _refreshFriends() {
+    if (_currentUserId != null) {
+      setState(() {
+        _friendsList = FirebaseService.getFriends(_currentUserId!);
+      });
+    }
+  }
+
+  void _showAddFriendDialog() {
+    final codeController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Friend'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Enter your friend\'s code:'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: codeController,
+              decoration: InputDecoration(
+                hintText: 'e.g., NCM7763',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                contentPadding: const EdgeInsets.all(16),
+              ),
+              textCapitalization: TextCapitalization.characters,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final code = codeController.text.trim().toUpperCase();
+              if (code.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter a code')),
+                );
+                return;
+              }
+
+              try {
+                final friendProfile =
+                    await FirebaseService.findUserByCode(code);
+                if (friendProfile == null) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Friend code not found')),
+                    );
+                  }
+                  return;
+                }
+
+                final friendUserId = friendProfile['uid'] as String?;
+                if (friendUserId == null) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Invalid friend code')),
+                    );
+                  }
+                  return;
+                }
+
+                if (friendUserId == _currentUserId) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('You cannot add yourself as a friend')),
+                    );
+                  }
+                  return;
+                }
+
+                await FirebaseService.addFriend(_currentUserId!, friendUserId);
+                if (mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text(
+                            'Added ${friendProfile['displayName'] ?? 'Friend'}!')),
+                  );
+                  _refreshFriends();
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: ${e.toString()}')),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+            ),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFriendStatsPopup(
+      Map<String, dynamic> friend, String friendUserId) {
+    showDialog(
+      context: context,
+      builder: (context) => FutureBuilder<Map<String, dynamic>>(
+        future: FirebaseService.getFriendStats(friendUserId),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return AlertDialog(
+              title: const Text('Loading...'),
+              content: const Center(child: CircularProgressIndicator()),
+            );
+          }
+
+          final stats = snapshot.data!;
+          return AlertDialog(
+            title: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(stats['displayName'] ?? 'Friend'),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildStatRow('📊 Total Cigarettes', '${stats['totalCigarettes']}'),
+                  const SizedBox(height: 12),
+                  _buildStatRow('📈 Smoking Days', '${stats['smokingDays']}'),
+                  const SizedBox(height: 12),
+                  _buildStatRow('📉 Average/Day', 
+                      '${(stats['averagePerDay'] as double).toStringAsFixed(1)}'),
+                  const SizedBox(height: 12),
+                  _buildStatRow('📅 Tracked Days', '${stats['totalDays']}'),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        await FirebaseService.removeFriend(
+                            _currentUserId!, friendUserId);
+                        if (mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Friend removed')),
+                          );
+                          _refreshFriends();
+                        }
+                      },
+                      icon: const Icon(Icons.delete),
+                      label: const Text('Remove Friend'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          // Open full-page LoginPage to avoid embedding a Scaffold inside a scrollable sheet
-          await Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const LoginPage()),
           );
-
-          // refresh UI after possible auth changes
-          _loadData();
-          widget.onUpdate();
         },
-        label: const Text('Login'),
-        icon: const Icon(Icons.login),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-    );
-  }
-
-  Widget _buildStatCard({
-    required String label,
-    required Widget Function() valueBuilder,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 14,
-              color: Colors.grey,
-              fontWeight: FontWeight.w500,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 12),
-          valueBuilder(),
-        ],
       ),
     );
   }
-}
 
-class FriendsPage extends StatelessWidget {
-  const FriendsPage({super.key});
+  Widget _buildStatRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 14)),
+        Text(value,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Friends'),
-        centerTitle: true,
-        elevation: 0,
-      ),
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
+    final user = FirebaseService.getCurrentUser();
+
+    if (user == null) {
+      return Scaffold(
+        appBar: null,
+        body: SafeArea(
+          child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.people_outline,
-                  size: 64,
-                  color: Colors.grey[400],
-                ),
+                Icon(Icons.lock, size: 64, color: Colors.grey[400]),
                 const SizedBox(height: 24),
+                const Text('Sign in to use Friends feature'),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: null,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 20),
+
+                // Your Friend Code Section - At Top
+                FutureBuilder<String>(
+                  future: _friendCode,
+                  builder: (context, snapshot) {
+                    print('FutureBuilder snapshot: hasData=${snapshot.hasData}, connectionState=${snapshot.connectionState}, error=${snapshot.error}');
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Padding(
+                        padding: EdgeInsets.all(24.0),
+                        child: CircularProgressIndicator(),
+                      );
+                    }
+                    if (snapshot.hasError) {
+                      print('Friend code error: ${snapshot.error}');
+                      return const SizedBox();
+                    }
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      print('No friend code data');
+                      return const SizedBox();
+                    }
+                    final code = snapshot.data!;
+                    return Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.purple[600]!.withOpacity(0.3),
+                            Colors.purple[400]!.withOpacity(0.1),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.purple[300]!,
+                          width: 2,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text(
+                            '🔑 Your Friend Code',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: Colors.purple[200]!,
+                                width: 1.5,
+                              ),
+                            ),
+                            child: Text(
+                              code,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.purple[200],
+                                letterSpacing: 2,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Share this code with friends to add you',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Copied: $code'),
+                                        duration: const Duration(milliseconds: 1500),
+                                      ),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.copy, size: 18),
+                                  label: const Text('Copy'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.purple,
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: () async {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Share ready'),
+                                        duration: Duration(milliseconds: 1500),
+                                      ),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.share, size: 18),
+                                  label: const Text('Share'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blue,
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 20),
+
                 Text(
-                  'Friends',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  '👥 Friends',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue[400],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Connect with friends and compare progress',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.grey[500],
+                  ),
+                ),
+                const SizedBox(height: 28),
+
+                // Add Friend Button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _showAddFriendDialog,
+                    icon: const Icon(Icons.person_add),
+                    label: const Text('Add Friend by Code'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 32),
+
+                // Friends List
+                Text(
+                  '👫 Your Friends',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
-                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  'Coming soon...',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey[600],
-                  ),
-                  textAlign: TextAlign.center,
+                const SizedBox(height: 16),
+
+                FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _friendsList,
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final friends = snapshot.data!;
+                    if (friends.isEmpty) {
+                      return Container(
+                        padding: const EdgeInsets.all(32),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[800]!.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(Icons.group, size: 48, color: Colors.grey[500]),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'No friends yet',
+                              style: TextStyle(fontSize: 16),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Add friends using their code',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[500],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: friends.length,
+                      itemBuilder: (context, index) {
+                        final friend = friends[index];
+                        final friendUserId = friend['userId'] as String;
+                        final displayName =
+                            friend['displayName'] as String? ?? 'Friend';
+
+                        return GestureDetector(
+                          onTap: () {
+                            _showFriendStatsPopup(friend, friendUserId);
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.blue[600]!.withOpacity(0.15),
+                                  Colors.blue[400]!.withOpacity(0.05),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.blue[300]!,
+                                width: 1.5,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue[400]!.withOpacity(0.3),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    displayName[0].toUpperCase(),
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue[300],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        displayName,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Tap to view stats',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey[500],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.arrow_forward_ios,
+                                  size: 16,
+                                  color: Colors.grey[500],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
                 ),
+
+                const SizedBox(height: 40),
               ],
             ),
           ),
@@ -1324,9 +2277,10 @@ class FriendsPage extends StatelessWidget {
 }
 
 class StatsPage extends StatefulWidget {
+  final String? userId;
   final VoidCallback onUpdate;
 
-  const StatsPage({super.key, required this.onUpdate});
+  const StatsPage({super.key, this.userId, required this.onUpdate});
 
   @override
   State<StatsPage> createState() => _StatsPageState();
@@ -1339,6 +2293,15 @@ class _StatsPageState extends State<StatsPage> {
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  @override
+  void didUpdateWidget(StatsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Rebuild UI when userId changes (login/logout)
+    if (oldWidget.userId != widget.userId) {
+      setState(() {});
+    }
   }
 
   void _loadData() {
@@ -1472,11 +2435,7 @@ class _StatsPageState extends State<StatsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Stats'),
-        centerTitle: true,
-        elevation: 0,
-      ),
+      appBar: null,
       body: FutureBuilder<Map<String, int>>(
         future: _data,
         builder: (context, snapshot) {
@@ -1616,6 +2575,53 @@ class _StatsPageState extends State<StatsPage> {
                         _buildLegendItem('High', Colors.red[600]!),
                       ],
                     ),
+                    const SizedBox(height: 48),
+                    // Logout button - only shown if logged in
+                    if (widget.userId != null)
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            // Show confirmation dialog
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Logout'),
+                                content: const Text('Are you sure you want to logout?'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.of(context).pop(false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () => Navigator.of(context).pop(true),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.red,
+                                    ),
+                                    child: const Text('Logout'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            
+                            if (confirm == true) {
+                              await FirebaseService.signOut();
+                              // Give Firebase time to update auth state
+                              await Future.delayed(const Duration(milliseconds: 200));
+                              if (mounted) {
+                                widget.onUpdate();
+                              }
+                            }
+                          },
+                          icon: const Icon(Icons.logout),
+                          label: const Text('Logout'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
